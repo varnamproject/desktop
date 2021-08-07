@@ -147,14 +147,13 @@ func learnFromFile(langCode, fileToLearn string) {
 	log.Printf("Learning from %s\n", fileToLearn)
 
 	_, _ = getOrCreateHandler(langCode, func(handle *govarnamgo.VarnamHandle) (data interface{}, err error) {
-		// learnStatus, err := handle.LearnFromFile(fileToLearn)
-		err = handle.LearnFromFile(fileToLearn)
+		learnStatus, verr := handle.LearnFromFile(fileToLearn)
 
 		end := time.Now()
-		if err != nil {
-			log.Printf("Error learning from '%s'\n", err.Error())
+		if verr != nil {
+			log.Printf("Error learning from '%s'\n", verr.Error())
 		} else {
-			log.Printf("Learned from '%s'. Took %s\n", fileToLearn, end.Sub(start))
+			log.Printf("Learned from '%s'. Total Words: %d. Failed Words: %d Took %s\n", fileToLearn, learnStatus.TotalWords, learnStatus.FailedWords, end.Sub(start))
 		}
 
 		if err = os.Remove(fileToLearn); err != nil {

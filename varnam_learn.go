@@ -64,18 +64,13 @@ func learnWordsFromFile(c echo.Context, langCode string, fileToLearn string, rem
 	sendOutput(fmt.Sprintf("Learning from %s\n", fileToLearn))
 
 	_, _ = getOrCreateHandler(langCode, func(handle *govarnamgo.VarnamHandle) (data interface{}, err error) {
-		// TODO learn status
-		// learnStatus, err := handle.LearnFromFile(fileToLearn)
-
-		err = handle.LearnFromFile(fileToLearn)
+		learnStatus, verr := handle.LearnFromFile(fileToLearn)
 		end := time.Now()
 
-		if err != nil {
-			sendOutput(fmt.Sprintf("Error learning from '%s'\n", err.Error()))
+		if verr != nil {
+			sendOutput(fmt.Sprintf("Error learning: '%s'\n", verr.Error()))
 		} else {
-			sendOutput(fmt.Sprintf("Learned from '%s'. Took %s\n", fileToLearn, end.Sub(start)))
-			// TODO learn status
-			// sendOutput(fmt.Sprintf("Learned from '%s'. TotalWords: %d, Failed: %d. Took %s\n", fileToLearn, learnStatus.TotalWords, learnStatus.Failed, end.Sub(start)))
+			sendOutput(fmt.Sprintf("Finished Learning. TotalWords: %d, Failed: %d. Took %s\n", learnStatus.TotalWords, learnStatus.FailedWords, end.Sub(start)))
 		}
 
 		if removeFile {

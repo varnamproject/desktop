@@ -167,6 +167,8 @@ func onTrayReady() {
 }
 
 func main() {
+	fmt.Printf("aaa")
+
 	config, err := initAppConfig()
 	if err != nil {
 		log.Fatal(err.Error())
