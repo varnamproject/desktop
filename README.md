@@ -4,7 +4,7 @@ Cross-platform desktop app for Varnam. Uses [varnam-editor](https://github.com/t
 
 ## Installation
 
-* Download from [Releases](https://github.com/athul/varnam-desktop/releases)
+* Download from [Releases](https://github.com/varnamproject/desktop/releases)
 * Install [dependencies](#dependencies)
 
 ## Dependencies

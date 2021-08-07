@@ -8,9 +8,9 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/athul/varnam-desktop/icon"
 	"github.com/getlantern/systray"
 	flag "github.com/spf13/pflag"
+	"github.com/varnamproject/desktop/icon"
 
 	"github.com/knadh/koanf"
 	"github.com/knadh/koanf/parsers/toml"
