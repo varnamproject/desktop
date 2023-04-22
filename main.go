@@ -53,6 +53,8 @@ type appConfig struct {
 	SyncInterval           time.Duration `koanf:"sync-interval"`
 	UpstreamURL            string        `koanf:"upstream-url"`
 	// Web                    bool          `koanf:"web"`
+
+	VstDir string `koanf:"vst-dir"`
 }
 
 // App is a singleton to share across handlers.
@@ -174,6 +176,10 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
+	if config.VstDir != "" {
+		os.Setenv("VARNAM_VST_DIR", config.VstDir)
+	}
+
 	appAddress = "http://" + config.Address
 
 	maxHandleCount = kf.Int("app.max-handles")
@@ -199,7 +205,7 @@ func main() {
 	}
 
 	app := &App{
-		cache: NewMemCache(),
+		cache: NewCache(),
 		log:   log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile),
 		fs:    fs,
 	}

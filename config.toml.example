@@ -5,7 +5,7 @@
     cert-path                   = ""
     key-file-path               = ""
     max-handles                 = 10
-    upstream-url                = "https://kde.smc.org.in:8123"
+    upstream-url                = "https://api.varnamproject.com"
     download-enabled-schemes    = ""
     sync-interval               = "30s"
     accounts-enabled            = false

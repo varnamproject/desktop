@@ -9,13 +9,14 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"gitlab.com/subins2000/govarnam/govarnamgo"
+	"github.com/varnamproject/govarnam/govarnamgo"
 )
 
 //CorpusDetails TODO implement CorpusDetails in govarnam
@@ -46,6 +47,23 @@ type transliterationResponse struct {
 	standardResponse
 	Result []string `json:"result"`
 	Input  string   `json:"input"`
+}
+
+type suggestionResponse struct {
+	Word      string `json:"word"`
+	Weight    int    `json:"weight"`
+	LearnedOn int    `json:"learned_on"`
+}
+
+type advancedTransliterationResponse struct {
+	standardResponse
+	Input                        string               `json:"input"`
+	ExactWords                   []suggestionResponse `json:"exact_words"`
+	ExactMatches                 []suggestionResponse `json:"exact_matches"`
+	DictionarySuggestions        []suggestionResponse `json:"dictionary_suggestions"`
+	PatternDictionarySuggestions []suggestionResponse `json:"pattern_dictionary_suggestions"`
+	TokenizerSuggestions         []suggestionResponse `json:"tokenizer_suggestions"`
+	GreedyTokenized              []suggestionResponse `json:"greedy_tokenized"`
 }
 
 type metaResponse struct {
@@ -112,38 +130,113 @@ func handleTransliteration(c echo.Context) error {
 		app      = c.Get("app").(*App)
 	)
 
-	words, err := app.cache.Get(langCode, word)
+	// Resolving a bug in echo
+	// https://github.com/labstack/echo/issues/561
+	var err error
+	word, err = url.QueryUnescape(word)
+	if err != nil {
+		app.log.Printf("error in transliterating, err: %s", err.Error())
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error transliterating given string. message: %s", err.Error()))
+	}
+
+	cacheKey := fmt.Sprintf("tl-%s-%s", langCode, word)
+
+	words, err := app.cache.GetString(cacheKey)
 	if err != nil {
 		result, err := transliterate(c.Request().Context(), langCode, word)
 		if err != nil {
-			app.log.Printf("error in transliterationg, err: %s", err.Error())
+			app.log.Printf("error in transliterating, err: %s", err.Error())
 			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error transliterating given string. message: %s", err.Error()))
 		}
 
-		for _, sug := range result.(govarnamgo.TransliterationResult).ExactMatches {
+		for _, sug := range result.([]govarnamgo.Suggestion) {
 			words = append(words, sug.Word)
 		}
 
-		for _, sug := range result.(govarnamgo.TransliterationResult).PatternDictionarySuggestions {
-			words = append(words, sug.Word)
-		}
-
-		for _, sug := range result.(govarnamgo.TransliterationResult).DictionarySuggestions {
-			words = append(words, sug.Word)
-		}
-
-		for _, sug := range result.(govarnamgo.TransliterationResult).GreedyTokenized {
-			words = append(words, sug.Word)
-		}
-
-		for _, sug := range result.(govarnamgo.TransliterationResult).TokenizerSuggestions {
-			words = append(words, sug.Word)
-		}
-
-		_ = app.cache.Set(langCode, word, words...)
+		_ = app.cache.SetString(cacheKey, words...)
 	}
 
 	return c.JSON(http.StatusOK, transliterationResponse{standardResponse: newStandardResponse(), Result: words, Input: word})
+}
+
+func handleAdvancedTransliteration(c echo.Context) error {
+	var (
+		langCode = c.Param("langCode")
+		word     = c.Param("word")
+		app      = c.Get("app").(*App)
+	)
+
+	// Resolving a bug in echo
+	// https://github.com/labstack/echo/issues/561
+	var err error
+	word, err = url.QueryUnescape(word)
+	if err != nil {
+		app.log.Printf("error in transliterating, err: %s", err.Error())
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error transliterating given string. message: %s", err.Error()))
+	}
+
+	var response advancedTransliterationResponse
+	var cacheKey = fmt.Sprintf("atl-%s-%s", langCode, word)
+
+	cached, err := app.cache.Get(cacheKey)
+	if err == nil {
+		response = cached.(advancedTransliterationResponse)
+	} else {
+		result, err := transliterateAdvanced(c.Request().Context(), langCode, word)
+		if err != nil {
+			app.log.Printf("error in transliterating, err: %s", err.Error())
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error transliterating given string. message: %s", err.Error()))
+		}
+
+		var varnamResult = result.(govarnamgo.TransliterationResult)
+
+		for _, sug := range varnamResult.ExactWords {
+			response.ExactWords = append(response.ExactWords, suggestionResponse(sug))
+		}
+		for _, sug := range varnamResult.ExactMatches {
+			response.ExactMatches = append(response.ExactMatches, suggestionResponse(sug))
+		}
+		for _, sug := range varnamResult.DictionarySuggestions {
+			response.DictionarySuggestions = append(response.DictionarySuggestions, suggestionResponse(sug))
+		}
+		for _, sug := range varnamResult.PatternDictionarySuggestions {
+			response.PatternDictionarySuggestions = append(response.PatternDictionarySuggestions, suggestionResponse(sug))
+		}
+		for _, sug := range varnamResult.TokenizerSuggestions {
+			response.TokenizerSuggestions = append(response.TokenizerSuggestions, suggestionResponse(sug))
+		}
+		for _, sug := range varnamResult.GreedyTokenized {
+			response.GreedyTokenized = append(response.GreedyTokenized, suggestionResponse(sug))
+		}
+
+		_ = app.cache.Set(cacheKey, response)
+	}
+
+	response.Input = word
+
+	// Don't return null for array responses
+	if response.ExactWords == nil {
+		response.ExactWords = []suggestionResponse{}
+	}
+	if response.ExactMatches == nil {
+		response.ExactMatches = []suggestionResponse{}
+	}
+	if response.DictionarySuggestions == nil {
+		response.DictionarySuggestions = []suggestionResponse{}
+	}
+	if response.PatternDictionarySuggestions == nil {
+		response.PatternDictionarySuggestions = []suggestionResponse{}
+	}
+	if response.TokenizerSuggestions == nil {
+		response.TokenizerSuggestions = []suggestionResponse{}
+	}
+	if response.GreedyTokenized == nil {
+		response.GreedyTokenized = []suggestionResponse{}
+	}
+
+	response.standardResponse = newStandardResponse()
+
+	return c.JSON(http.StatusOK, response)
 }
 
 func handleReverseTransliteration(c echo.Context) error {
@@ -153,32 +246,39 @@ func handleReverseTransliteration(c echo.Context) error {
 		app      = c.Get("app").(*App)
 	)
 
-	result, err := app.cache.Get(langCode, word)
+	// Resolving a bug in echo
+	// https://github.com/labstack/echo/issues/561
+	var err error
+	word, err = url.QueryUnescape(word)
 	if err != nil {
-		res, err := reveseTransliterate(langCode, word)
+		app.log.Printf("error in reverse transliterationg, err: %s", err.Error())
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error transliterating given string. message: %s", err.Error()))
+	}
+
+	// Separate namespace for reverse transliteration
+	cacheKey := fmt.Sprintf("rtl-%s-%s", langCode, word)
+
+	words, err := app.cache.GetString(cacheKey)
+	if err != nil {
+		result, err := reveseTransliterate(langCode, word)
 		if err != nil {
 			app.log.Printf("error in reverse transliterationg, err: %s", err.Error())
 			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error transliterating given string. message: %s", err.Error()))
 		}
 
-		result = []string{res.(string)}
-		_ = app.cache.Set(langCode, word, res.(string))
+		for _, sug := range result.([]govarnamgo.Suggestion) {
+			words = append(words, sug.Word)
+		}
+
+		_ = app.cache.SetString(cacheKey, words...)
 	}
 
-	if len(result) <= 0 {
+	if len(words) <= 0 {
 		app.log.Printf("no reverse transliteration found for lang: %s word: %s", langCode, word)
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("no transliteration found for lanugage: %s, word: %s", langCode, word))
 	}
 
-	response := struct {
-		standardResponse
-		Result string `json:"result"`
-	}{
-		newStandardResponse(),
-		result[0],
-	}
-
-	return c.JSON(http.StatusOK, response)
+	return c.JSON(http.StatusOK, transliterationResponse{standardResponse: newStandardResponse(), Result: words, Input: word})
 }
 
 // func handleMetadata(c echo.Context) error {
@@ -412,7 +512,8 @@ func handleTrain(c echo.Context) error {
 
 	go func(args trainArgs) { ch <- args }(targs)
 
-	_, _ = app.cache.Delete(langCode, targs.Pattern)
+	cacheKey := fmt.Sprintf("tl-%s-%s", langCode, targs.Pattern)
+	_, _ = app.cache.Delete(cacheKey)
 
 	return c.JSON(200, "Word Trained")
 }

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/subins2000/govarnam/govarnamgo"
+	"github.com/varnamproject/govarnam/govarnamgo"
 
 	"github.com/golang/groupcache"
 	_ "github.com/mattn/go-sqlite3"
@@ -93,7 +93,13 @@ func getOrCreateHandler(schemeIdentifier string, f func(handle *govarnamgo.Varna
 
 func transliterate(c context.Context, schemeIdentifier string, word string) (interface{}, error) {
 	return getOrCreateHandler(schemeIdentifier, func(handle *govarnamgo.VarnamHandle) (data interface{}, err error) {
-		return handle.Transliterate(c, word), nil
+		return handle.Transliterate(c, word)
+	})
+}
+
+func transliterateAdvanced(c context.Context, schemeIdentifier string, word string) (interface{}, error) {
+	return getOrCreateHandler(schemeIdentifier, func(handle *govarnamgo.VarnamHandle) (data interface{}, err error) {
+		return handle.TransliterateAdvanced(c, word)
 	})
 }
 
