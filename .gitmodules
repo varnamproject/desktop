@@ -1,3 +1,6 @@
 [submodule "varnam-editor"]
 	path = varnam-editor
-	url = git@github.com:varnamproject/editor.git
+	url = https://github.com/varnamproject/editor.git
+[submodule "govarnam"]
+	path = govarnam
+	url = https://github.com/varnamproject/govarnam.git

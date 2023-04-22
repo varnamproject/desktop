@@ -18,6 +18,7 @@ else
 RELEASE_NAME := $(RELEASE_NAME)-linux-${ARCH}
 endif
 
+# TODO govarnam windows
 libvarnam-windows:
 	cd libvarnam/libvarnam && cmake -Bbuild . && cd build && cmake --build . --config Release && cp Release/varnam.dll ../
 
@@ -25,13 +26,16 @@ libvarnam-windows-32:
 	cd libvarnam/libvarnam && cmake -A Win32 -Bbuild . && cd build && cmake --build . --config Release && cp Release/varnam.dll ../
 
 .ONESHELL:
-libvarnam-nix:
-	cd libvarnam/libvarnam
-	mkdir -p build
-	cd build
-	cmake ..
-	cmake --build . --config Release
-	cp -P libvarnam.so* ../
+govarnam-mac:
+	cd govarnam
+	make library-mac-universal
+	cp ./libgovarnam.dylib ../
+
+.ONESHELL:
+govarnam-linux:
+	cd govarnam
+	make library
+	cp ./libgovarnam.so ../
 
 ifeq ($(OS),Windows_NT)
 .PHONY: libvarnam
@@ -41,8 +45,16 @@ libvarnam: libvarnam-windows
 editor:
 	build-editor.bat
 else
-.PHONY: libvarnam
-libvarnam: libvarnam-nix
+
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Linux)
+.PHONY: govarnam
+govarnam: govarnam-linux
+endif
+ifeq ($(UNAME_S),Darwin)
+.PHONY: govarnam
+govarnam: govarnam-mac
+endif
 
 .PHONY: editor
 editor:

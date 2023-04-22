@@ -4,12 +4,13 @@ Cross-platform desktop app for Varnam. Uses [varnam-editor](https://github.com/t
 
 ## Installation
 
-* Download from [Releases](https://github.com/varnamproject/desktop/releases)
-* Install [dependencies](#dependencies)
+- Download from [Releases](https://github.com/varnamproject/desktop/releases)
+- Install [dependencies](#dependencies)
 
 ## Dependencies
 
 Debian or Ubuntu based systems :
+
 ```
 sudo apt install libwebkit2gtk-4.0-37
 ```
@@ -20,24 +21,26 @@ Mac : Safari Browser should be installed
 
 ## Development
 
-* Clone the repo.
-* Install [dependencies](#dependencies)
-* Build `libvarnam` (On Windows, Visual Studio is needed to make the DLLs) :
-```
-git submodule update --init --recursive
-cd libvarnam/libvarnam && cmake . && make varnamstatic && ln -s $(realpath libvarnamstatic.a) libvarnam.a && cd -
-```
-* Build `varnam` :
+- Clone the repo.
+- Install [dependencies](#dependencies)
+- Build `govarnam` :
 
+```bash
+git submodule update --init --recursive
+make govarnam-macos
 ```
+
+- Build the main desktop app :
+
+```bash
 make deps
 make editor
 make build
 ```
 
-* Run :
+- Run :
 
-```
+```bash
 ./varnam
 ```
 
