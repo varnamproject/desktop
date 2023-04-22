@@ -4,23 +4,25 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
 
-	"github.com/athul/varnam-desktop/libvarnam"
-	"github.com/golang/groupcache"
 	"github.com/labstack/echo/v4"
+	"github.com/varnamproject/govarnam/govarnamgo"
 )
+
+//CorpusDetails TODO implement CorpusDetails in govarnam
+type CorpusDetails struct {
+	name string
+}
 
 var errCacheSkipped = errors.New("cache skipped")
 
@@ -47,8 +49,25 @@ type transliterationResponse struct {
 	Input  string   `json:"input"`
 }
 
+type suggestionResponse struct {
+	Word      string `json:"word"`
+	Weight    int    `json:"weight"`
+	LearnedOn int    `json:"learned_on"`
+}
+
+type advancedTransliterationResponse struct {
+	standardResponse
+	Input                        string               `json:"input"`
+	ExactWords                   []suggestionResponse `json:"exact_words"`
+	ExactMatches                 []suggestionResponse `json:"exact_matches"`
+	DictionarySuggestions        []suggestionResponse `json:"dictionary_suggestions"`
+	PatternDictionarySuggestions []suggestionResponse `json:"pattern_dictionary_suggestions"`
+	TokenizerSuggestions         []suggestionResponse `json:"tokenizer_suggestions"`
+	GreedyTokenized              []suggestionResponse `json:"greedy_tokenized"`
+}
+
 type metaResponse struct {
-	Result *libvarnam.CorpusDetails `json:"result"`
+	Result *CorpusDetails `json:"result"`
 	standardResponse
 }
 
@@ -111,19 +130,113 @@ func handleTransliteration(c echo.Context) error {
 		app      = c.Get("app").(*App)
 	)
 
-	words, err := app.cache.Get(langCode, word)
+	// Resolving a bug in echo
+	// https://github.com/labstack/echo/issues/561
+	var err error
+	word, err = url.QueryUnescape(word)
 	if err != nil {
-		w, err := transliterate(langCode, word)
+		app.log.Printf("error in transliterating, err: %s", err.Error())
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error transliterating given string. message: %s", err.Error()))
+	}
+
+	cacheKey := fmt.Sprintf("tl-%s-%s", langCode, word)
+
+	words, err := app.cache.GetString(cacheKey)
+	if err != nil {
+		result, err := transliterate(c.Request().Context(), langCode, word)
 		if err != nil {
-			app.log.Printf("error in transliterationg, err: %s", err.Error())
+			app.log.Printf("error in transliterating, err: %s", err.Error())
 			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error transliterating given string. message: %s", err.Error()))
 		}
 
-		words, _ = w.([]string)
-		_ = app.cache.Set(langCode, word, words...)
+		for _, sug := range result.([]govarnamgo.Suggestion) {
+			words = append(words, sug.Word)
+		}
+
+		_ = app.cache.SetString(cacheKey, words...)
 	}
 
 	return c.JSON(http.StatusOK, transliterationResponse{standardResponse: newStandardResponse(), Result: words, Input: word})
+}
+
+func handleAdvancedTransliteration(c echo.Context) error {
+	var (
+		langCode = c.Param("langCode")
+		word     = c.Param("word")
+		app      = c.Get("app").(*App)
+	)
+
+	// Resolving a bug in echo
+	// https://github.com/labstack/echo/issues/561
+	var err error
+	word, err = url.QueryUnescape(word)
+	if err != nil {
+		app.log.Printf("error in transliterating, err: %s", err.Error())
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error transliterating given string. message: %s", err.Error()))
+	}
+
+	var response advancedTransliterationResponse
+	var cacheKey = fmt.Sprintf("atl-%s-%s", langCode, word)
+
+	cached, err := app.cache.Get(cacheKey)
+	if err == nil {
+		response = cached.(advancedTransliterationResponse)
+	} else {
+		result, err := transliterateAdvanced(c.Request().Context(), langCode, word)
+		if err != nil {
+			app.log.Printf("error in transliterating, err: %s", err.Error())
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error transliterating given string. message: %s", err.Error()))
+		}
+
+		var varnamResult = result.(govarnamgo.TransliterationResult)
+
+		for _, sug := range varnamResult.ExactWords {
+			response.ExactWords = append(response.ExactWords, suggestionResponse(sug))
+		}
+		for _, sug := range varnamResult.ExactMatches {
+			response.ExactMatches = append(response.ExactMatches, suggestionResponse(sug))
+		}
+		for _, sug := range varnamResult.DictionarySuggestions {
+			response.DictionarySuggestions = append(response.DictionarySuggestions, suggestionResponse(sug))
+		}
+		for _, sug := range varnamResult.PatternDictionarySuggestions {
+			response.PatternDictionarySuggestions = append(response.PatternDictionarySuggestions, suggestionResponse(sug))
+		}
+		for _, sug := range varnamResult.TokenizerSuggestions {
+			response.TokenizerSuggestions = append(response.TokenizerSuggestions, suggestionResponse(sug))
+		}
+		for _, sug := range varnamResult.GreedyTokenized {
+			response.GreedyTokenized = append(response.GreedyTokenized, suggestionResponse(sug))
+		}
+
+		_ = app.cache.Set(cacheKey, response)
+	}
+
+	response.Input = word
+
+	// Don't return null for array responses
+	if response.ExactWords == nil {
+		response.ExactWords = []suggestionResponse{}
+	}
+	if response.ExactMatches == nil {
+		response.ExactMatches = []suggestionResponse{}
+	}
+	if response.DictionarySuggestions == nil {
+		response.DictionarySuggestions = []suggestionResponse{}
+	}
+	if response.PatternDictionarySuggestions == nil {
+		response.PatternDictionarySuggestions = []suggestionResponse{}
+	}
+	if response.TokenizerSuggestions == nil {
+		response.TokenizerSuggestions = []suggestionResponse{}
+	}
+	if response.GreedyTokenized == nil {
+		response.GreedyTokenized = []suggestionResponse{}
+	}
+
+	response.standardResponse = newStandardResponse()
+
+	return c.JSON(http.StatusOK, response)
 }
 
 func handleReverseTransliteration(c echo.Context) error {
@@ -133,140 +246,147 @@ func handleReverseTransliteration(c echo.Context) error {
 		app      = c.Get("app").(*App)
 	)
 
-	result, err := app.cache.Get(langCode, word)
+	// Resolving a bug in echo
+	// https://github.com/labstack/echo/issues/561
+	var err error
+	word, err = url.QueryUnescape(word)
 	if err != nil {
-		res, err := reveseTransliterate(langCode, word)
+		app.log.Printf("error in reverse transliterationg, err: %s", err.Error())
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error transliterating given string. message: %s", err.Error()))
+	}
+
+	// Separate namespace for reverse transliteration
+	cacheKey := fmt.Sprintf("rtl-%s-%s", langCode, word)
+
+	words, err := app.cache.GetString(cacheKey)
+	if err != nil {
+		result, err := reveseTransliterate(langCode, word)
 		if err != nil {
 			app.log.Printf("error in reverse transliterationg, err: %s", err.Error())
 			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error transliterating given string. message: %s", err.Error()))
 		}
 
-		result = []string{res.(string)}
-		_ = app.cache.Set(langCode, word, res.(string))
+		for _, sug := range result.([]govarnamgo.Suggestion) {
+			words = append(words, sug.Word)
+		}
+
+		_ = app.cache.SetString(cacheKey, words...)
 	}
 
-	if len(result) <= 0 {
+	if len(words) <= 0 {
 		app.log.Printf("no reverse transliteration found for lang: %s word: %s", langCode, word)
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("no transliteration found for lanugage: %s, word: %s", langCode, word))
 	}
 
-	response := struct {
-		standardResponse
-		Result string `json:"result"`
-	}{
-		newStandardResponse(),
-		result[0],
-	}
-
-	return c.JSON(http.StatusOK, response)
+	return c.JSON(http.StatusOK, transliterationResponse{standardResponse: newStandardResponse(), Result: words, Input: word})
 }
 
-func handleMetadata(c echo.Context) error {
-	var (
-		schemeIdentifier = c.Param("langCode")
-		app              = c.Get("app").(*App)
-	)
+// func handleMetadata(c echo.Context) error {
+// 	var (
+// 		schemeIdentifier = c.Param("langCode")
+// 		app              = c.Get("app").(*App)
+// 	)
 
-	data, err := getOrCreateHandler(schemeIdentifier, func(handle *libvarnam.Varnam) (data interface{}, err error) {
-		details, err := handle.GetCorpusDetails()
-		if err != nil {
-			return nil, err
-		}
+// 	data, err := getOrCreateHandler(schemeIdentifier, func(handle *govarnamgo.VarnamHandle) (data interface{}, err error) {
+// 		details, err := handle.GetCorpusDetails()
+// 		if err != nil {
+// 			return nil, err
+// 		}
 
-		return &metaResponse{Result: details, standardResponse: newStandardResponse()}, nil
-	})
-	if err != nil {
-		app.log.Printf("error in getting corpus details for: %s, err: %s", schemeIdentifier, err.Error())
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error getting metadata. message: %s", err.Error()))
-	}
+// 		return &metaResponse{Result: details, standardResponse: newStandardResponse()}, nil
+// 	})
+// 	if err != nil {
+// 		app.log.Printf("error in getting corpus details for: %s, err: %s", schemeIdentifier, err.Error())
+// 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error getting metadata. message: %s", err.Error()))
+// 	}
 
-	return c.JSON(http.StatusOK, data)
-}
+// 	return c.JSON(http.StatusOK, data)
+// }
 
-func handleDownload(c echo.Context) error {
-	var (
-		langCode = c.Param("langCode")
-		start, _ = strconv.Atoi(c.Param("downloadStart"))
+// func handleDownload(c echo.Context) error {
+// 	var (
+// 		langCode = c.Param("langCode")
+// 		start, _ = strconv.Atoi(c.Param("downloadStart"))
 
-		app = c.Get("app").(*App)
-	)
+// 		app = c.Get("app").(*App)
+// 	)
 
-	if start < 0 {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid parameter")
-	}
+// 	if start < 0 {
+// 		return echo.NewHTTPError(http.StatusBadRequest, "invalid parameter")
+// 	}
 
-	fillCache := func(ctx context.Context, key string, dest groupcache.Sink) error {
-		// cache miss, fetch from DB
-		// key is in the form <schemeIdentifier>+<downloadStart>
-		parts := strings.Split(key, "+")
-		schemeID := parts[0]
-		downloadStart, _ := strconv.Atoi(parts[1])
+// 	fillCache := func(ctx context.Context, key string, dest groupcache.Sink) error {
+// 		// cache miss, fetch from DB
+// 		// key is in the form <schemeIdentifier>+<downloadStart>
+// 		parts := strings.Split(key, "+")
+// 		schemeID := parts[0]
+// 		downloadStart, _ := strconv.Atoi(parts[1])
 
-		words, err := getWords(schemeID, downloadStart)
-		if err != nil {
-			return err
-		}
+// 		words, err := getWords(schemeID, downloadStart)
+// 		if err != nil {
+// 			return err
+// 		}
 
-		response := downloadResponse{Count: len(words), Words: words, standardResponse: newStandardResponse()}
+// 		response := downloadResponse{Count: len(words), Words: words, standardResponse: newStandardResponse()}
 
-		b, err := json.Marshal(response)
-		if err != nil {
-			return err
-		}
+// 		b, err := json.Marshal(response)
+// 		if err != nil {
+// 			return err
+// 		}
 
-		// gzipping the response so that it can be served directly
-		var gb bytes.Buffer
-		gWriter := gzip.NewWriter(&gb)
+// 		// gzipping the response so that it can be served directly
+// 		var gb bytes.Buffer
+// 		gWriter := gzip.NewWriter(&gb)
 
-		defer func() { _ = gWriter.Close() }()
+// 		defer func() { _ = gWriter.Close() }()
 
-		_, _ = gWriter.Write(b)
-		_ = gWriter.Flush()
+// 		_, _ = gWriter.Write(b)
+// 		_ = gWriter.Flush()
 
-		if len(words) < downloadPageSize {
-			varnamCtx, _ := ctx.(*varnamCacheContext)
-			varnamCtx.Data = gb.Bytes()
+// 		if len(words) < downloadPageSize {
+// 			varnamCtx, _ := ctx.(*varnamCacheContext)
+// 			varnamCtx.Data = gb.Bytes()
 
-			return errCacheSkipped
-		}
+// 			return errCacheSkipped
+// 		}
 
-		_ = dest.SetBytes(gb.Bytes())
+// 		_ = dest.SetBytes(gb.Bytes())
 
-		return nil
-	}
+// 		return nil
+// 	}
 
-	once.Do(func() {
-		// Making the groups for groupcache
-		// There will be one group for each language
-		for _, scheme := range schemeDetails {
-			group := groupcache.GetGroup(scheme.Identifier)
-			if group == nil {
-				// 100MB max size for cache
-				group = groupcache.NewGroup(scheme.Identifier, 100<<20, groupcache.GetterFunc(fillCache))
-			}
-			cacheGroups[scheme.Identifier] = group
-		}
-	})
+// 	once.Do(func() {
+// 		// Making the groups for groupcache
+// 		// There will be one group for each language
+// 		for _, scheme := range schemeDetails {
+// 			group := groupcache.GetGroup(scheme.Identifier)
+// 			if group == nil {
+// 				// 100MB max size for cache
+// 				group = groupcache.NewGroup(scheme.Identifier, 100<<20, groupcache.GetterFunc(fillCache))
+// 			}
+// 			cacheGroups[scheme.Identifier] = group
+// 		}
+// 	})
 
-	cacheGroup := cacheGroups[langCode]
-	ctx := varnamCacheContext{}
+// 	cacheGroup := cacheGroups[langCode]
+// 	ctx := varnamCacheContext{}
 
-	var data []byte
-	if err := cacheGroup.Get(&ctx, fmt.Sprintf("%s+%d", langCode, start), groupcache.AllocatingByteSliceSink(&data)); err != nil {
-		if err == errCacheSkipped {
-			c.Response().Header().Set("Content-Encoding", "gzip")
-			return c.Blob(http.StatusOK, "application/json; charset=utf-8", ctx.Data)
-		}
+// 	var data []byte
+// 	if err := cacheGroup.Get(&ctx, fmt.Sprintf("%s+%d", langCode, start), groupcache.AllocatingByteSliceSink(&data)); err != nil {
+// 		if err == errCacheSkipped {
+// 			c.Response().Header().Set("Content-Encoding", "gzip")
+// 			return c.Blob(http.StatusOK, "application/json; charset=utf-8", ctx.Data)
+// 		}
 
-		app.log.Printf("error in fetching deta from cache: %s, err: %s", langCode, err.Error())
+// 		app.log.Printf("error in fetching deta from cache: %s, err: %s", langCode, err.Error())
 
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error getting metadata. message: %s", err.Error()))
-	}
+// 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error getting metadata. message: %s", err.Error()))
+// 	}
 
-	c.Response().Header().Set("Content-Encoding", "gzip")
+// 	c.Response().Header().Set("Content-Encoding", "gzip")
 
-	return c.Blob(http.StatusOK, "application/json; charset=utf-8", data)
-}
+// 	return c.Blob(http.StatusOK, "application/json; charset=utf-8", data)
+// }
 
 func handleLanguages(c echo.Context) error {
 	return c.JSON(http.StatusOK, schemeDetails)
@@ -392,7 +512,8 @@ func handleTrain(c echo.Context) error {
 
 	go func(args trainArgs) { ch <- args }(targs)
 
-	_, _ = app.cache.Delete(langCode, targs.Pattern)
+	cacheKey := fmt.Sprintf("tl-%s-%s", langCode, targs.Pattern)
+	_, _ = app.cache.Delete(cacheKey)
 
 	return c.JSON(200, "Word Trained")
 }
@@ -529,7 +650,7 @@ func handleDownloadLanguage(c echo.Context) error {
 	}
 
 	fileURL := fmt.Sprintf("%s/languages/%s/download", varnamdConfig.upstream, args.Lang)
-	filePath := libvarnam.GetSchemeFileDirectory() + "/" + args.Lang + ".vst"
+	filePath := govarnamgo.GetVSTDir() + "/" + args.Lang + ".vst"
 
 	app.log.Printf("%s : %s", fileURL, filePath)
 

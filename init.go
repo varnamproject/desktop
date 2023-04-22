@@ -21,7 +21,7 @@ func initConfig(cfg appConfig) *config {
 
 		if s != "" {
 			if !isValidSchemeIdentifier(s) {
-				panic(fmt.Sprintf("%s is not a valid libvarnam supported scheme", s))
+				panic(fmt.Sprintf("%s is not a valid govarnam supported scheme", s))
 			}
 
 			toDownload[s] = true
@@ -34,7 +34,7 @@ func initConfig(cfg appConfig) *config {
 
 func (c *config) setDownloadStatus(langCode string, status bool) error {
 	if !isValidSchemeIdentifier(langCode) {
-		return fmt.Errorf("%s is not a valid libvarnam supported scheme", langCode)
+		return fmt.Errorf("%s is not a valid govarnam supported scheme", langCode)
 	}
 
 	c.schemesToDownload[langCode] = status

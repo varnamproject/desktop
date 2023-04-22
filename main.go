@@ -5,12 +5,13 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"time"
 
-	"github.com/athul/varnam-desktop/icon"
 	"github.com/getlantern/systray"
 	flag "github.com/spf13/pflag"
+	"github.com/varnamproject/desktop/icon"
 
 	"github.com/knadh/koanf"
 	"github.com/knadh/koanf/parsers/toml"
@@ -53,6 +54,8 @@ type appConfig struct {
 	SyncInterval           time.Duration `koanf:"sync-interval"`
 	UpstreamURL            string        `koanf:"upstream-url"`
 	// Web                    bool          `koanf:"web"`
+
+	VstDir string `koanf:"vst-dir"`
 }
 
 // App is a singleton to share across handlers.
@@ -172,6 +175,14 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
+	if config.VstDir != "" {
+		vstDir, err := filepath.Abs(config.VstDir)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		os.Setenv("VARNAM_VST_DIR", vstDir)
+	}
+
 	appAddress = "http://" + config.Address
 
 	maxHandleCount = kf.Int("app.max-handles")
@@ -197,7 +208,7 @@ func main() {
 	}
 
 	app := &App{
-		cache: NewMemCache(),
+		cache: NewCache(),
 		log:   log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile),
 		fs:    fs,
 	}

@@ -1,43 +1,37 @@
 # Varnam Desktop App
 
-Cross-platform desktop app for Varnam. Uses [varnam-editor](https://github.com/thetronjohnson/varnam-editor) as GUI frontend.
+Cross-platform desktop app for Varnam. Uses [varnam-editor](https://github.com/varnamproject/editor) as GUI frontend.
 
 ## Installation
 
-* Download from [Releases](https://github.com/athul/varnam-desktop/releases)
-* Install [dependencies](#dependencies)
-
-## Dependencies
-
-Debian or Ubuntu based systems :
-```
-sudo apt install libwebkit2gtk-4.0-37
-```
-
-Windows : Include [these DLLs](https://github.com/webview/webview/tree/master/dll) in the folder
-
-Mac : Safari Browser should be installed
+- Download from [Releases](https://github.com/varnamproject/desktop/releases)
 
 ## Development
 
-* Clone the repo.
-* Install [dependencies](#dependencies)
-* Build `libvarnam` (On Windows, Visual Studio is needed to make the DLLs) :
-```
-git submodule update --init --recursive
-cd libvarnam/libvarnam && cmake . && make varnamstatic && ln -s $(realpath libvarnamstatic.a) libvarnam.a && cd -
-```
-* Build `varnam` :
+- Clone the repo
+- Fetch submodules:
 
+```bash
+git submodule update --init --recursive
 ```
+
+- Build govarnam:
+
+```bash
+make govarnam
+```
+
+- Build the main desktop app :
+
+```bash
 make deps
-make editor
+make ui
 make build
 ```
 
-* Run :
+- Run :
 
-```
+```bash
 ./varnam
 ```
 

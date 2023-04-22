@@ -1,10 +1,9 @@
-module github.com/athul/varnam-desktop
+module github.com/varnamproject/desktop
 
 go 1.14
 
 require (
 	github.com/coocood/freecache v1.1.1
-	github.com/cratonica/2goarray v0.0.0-20190331194516-514510793eaa // indirect
 	github.com/getlantern/systray v1.0.5
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e
 	github.com/golang/protobuf v1.4.2 // indirect
@@ -12,10 +11,10 @@ require (
 	github.com/knadh/stuffbin v1.1.0
 	github.com/labstack/echo/v4 v4.1.16
 	github.com/mattn/go-colorable v0.1.7 // indirect
-	github.com/mattn/go-sqlite3 v1.14.0
+	github.com/mattn/go-sqlite3 v1.14.6
 	github.com/spf13/pflag v1.0.5
 	github.com/valyala/fasttemplate v1.2.0 // indirect
-	github.com/webview/webview v0.0.0-20200724072439-e0c01595b361
+	github.com/varnamproject/govarnam v1.9.0
 	golang.org/x/crypto v0.0.0-20200709230013-948cd5f35899 // indirect
 	golang.org/x/net v0.0.0-20200707034311-ab3426394381 // indirect
 	golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae // indirect
