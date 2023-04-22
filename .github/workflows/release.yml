@@ -23,6 +23,9 @@ jobs:
         with:
           submodules: recursive
       - uses: actions/setup-go@v2
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '16.5.0'
       - name: setup env
         # https://github.com/actions/setup-go/issues/14
         run: |
