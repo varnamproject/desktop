@@ -28,3 +28,7 @@ varnam
 ui
 
 config.toml
+.DS_Store
+*.dylib
+*.gz
+varnam-*

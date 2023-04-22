@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -169,15 +170,17 @@ func onTrayReady() {
 }
 
 func main() {
-	fmt.Printf("aaa")
-
 	config, err := initAppConfig()
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
 	if config.VstDir != "" {
-		os.Setenv("VARNAM_VST_DIR", config.VstDir)
+		vstDir, err := filepath.Abs(config.VstDir)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		os.Setenv("VARNAM_VST_DIR", vstDir)
 	}
 
 	appAddress = "http://" + config.Address
